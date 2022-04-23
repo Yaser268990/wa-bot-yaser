@@ -1,99 +1,164 @@
-const { bot, getBuffer } = require('../lib/')
-const fm = true
+/* Copyright (C) 2020 Yusuf Usta.
+Licensed under the  GPL-3.0 License;
+you may not use this file except in compliance with the License.
+WhatsAsena - Yusuf Usta
+*/
 
-bot(
-	{
-		pattern: 'jid',
-		fromMe: fm,
-		desc: 'Give jid of chat/user',
-		type: 'misc',
-	},
-	async (message, match) => {
-		return await message.sendMessage(
-			message.mention[0] || message.reply_message.jid || message.jid
-		)
-	}
-)
+const Asena = require('../events');
+const {MessageType} = require('@adiwajshing/baileys');
+const Config = require('../config');
 
-bot(
-	{
-		pattern: 'left',
-		fromMe: fm,
-		dec: 'To leave from group',
-		type: 'misc',
-		onlyGroup: true,
-	},
-	async (message, match) => {
-		if (match) await message.sendMessage(match)
-		return await message.leftFromGroup(message.jid)
-	}
-)
+const fs = require('fs');
+const Language = require('../language');
+const Lang = Language.getString('profile');
 
-bot(
-	{
-		pattern: 'block',
-		fromMe: fm,
-		desc: 'Block a person',
-		type: 'misc',
-	},
-	async (message, match) => {
-		const id =
-			message.mention[0] ||
-			message.reply_message.jid ||
-			(!message.isGroup && message.jid)
-		if (!id) return await message.sendMessage('*Give me a person*')
-		await message.sendMessage('_Blocked_')
-		await message.Block(id)
-	}
-)
+Asena.addCommand({pattern: 'leave$', fromMe: true, dontAddCommandList: true, desc: Lang.KICKME_DESC, onlyGroup: true}, (async (message, match) => {
+    if (Config.KICKMEMSG == 'default') { 
+        await message.client.sendMessage(message.jid,Lang.KICKME,MessageType.text);
+        await message.client.groupLeave(message.jid);
+    }
+    else {
+        await message.client.sendMessage(message.jid,Config.KICKMEMSG,MessageType.text);
+        await message.client.groupLeave(message.jid);
+    }
+}));
 
-bot(
-	{
-		pattern: 'unblock',
-		fromMe: fm,
-		desc: 'Unblock a person',
-		type: 'misc',
-	},
-	async (message, match) => {
-		const id =
-			message.mention[0] ||
-			message.reply_message.jid ||
-			(!message.isGroup && message.jid)
-		if (!id) return await message.sendMessage('*Give me a person*')
-		await message.sendMessage('_Unblocked_')
-		await message.Unblock(id)
-	}
-)
+Asena.addCommand({pattern: 'pp$', fromMe: true, dontAddCommandList: true, desc: Lang.PP_DESC}, (async (message, match) => {    
+    if (!message.reply_message || !message.reply_message.image) return await message.client.sendMessage(message.jid,Lang.NEED_PHOTO, MessageType.text);
+    
+    var load = await message.client.sendMessage(message.jid,Lang.PPING,MessageType.text);
+    var location = await message.client.downloadAndSaveMediaMessage({
+        key: {
+            remoteJid: message.reply_message.jid,
+            id: message.reply_message.id
+        },
+        message: message.reply_message.data.quotedMessage
+    });
 
-bot(
-	{
-		pattern: 'pp',
-		fromMe: fm,
-		desc: 'Change Profile Picture',
-		type: 'misc',
-	},
-	async (message, match) => {
-		if (!message.reply_message || !message.reply_message.image)
-			return await message.sendMessage('*Reply to a image*')
-		await message.updateProfilePicture(
-			await message.reply_message.downloadMediaMessage()
-		)
-		return await message.sendMessage('_Profile Picture Updated_')
-	}
-)
+    await message.client.updateProfilePicture(message.client.user.jid, fs.readFileSync(location));
+    await message.client.deleteMessage(message.jid, {id: load.key.id, remoteJid: message.jid, fromMe: true})
+}));
 
-bot(
-	{
-		pattern: 'whois',
-		fromMe: fm,
-		desc: 'To get PP and about',
-		type: 'misc',
-	},
-	async (message, match) => {
-		const id = message.mention[0] || message.reply_message.jid || message.jid
-		const url = await message.profilePictureUrl(id)
-		const { status } = await message.fetchStatus(id)
-		const { buffer } = await getBuffer(url)
-		return await message.sendMessage(buffer, { caption: status }, 'image')
-	}
-)
+Asena.addCommand({pattern: 'block ?(.*)', fromMe: true, dontAddCommandList: true, desc: Lang.BLOCK_DESC}, (async (message, match) => {   
+    if (Config.BLOCKMSG == 'default') {  
+        if (message.reply_message !== false) {
+            await message.client.sendMessage(message.jid, '@' + message.reply_message.jid.split('@')[0] + '```, ' + Lang.BLOCKED + '!```', MessageType.text, {
+                quotedMessage: message.reply_message.data, contextInfo: {mentionedJid: [message.reply_message.jid.replace('c.us', 's.whatsapp.net')]}
+            });
+            await message.client.blockUser(message.reply_message.jid, "add");
+        } else if (message.mention !== false) {
+            message.mention.map(async user => {
+                await message.client.sendMessage(message.jid, '@' + user.split('@')[0] + '```, ' + Lang.BLOCKED + '!```', MessageType.text, {
+                    previewType: 0, contextInfo: {mentionedJid: [user.replace('c.us', 's.whatsapp.net')]}
+                });
+                await message.client.blockUser(user, "add");
+            });
+        } else if (!message.jid.includes('-')) {
+            await message.client.sendMessage(message.jid, '*' + Lang.BLOCKED_UPPER + '*', MessageType.text);
+            await message.client.blockUser(message.jid, "add");
+        } else {
+            await message.client.sendMessage(message.jid, '*' + Lang.NEED_USER + '*', MessageType.text);
+        }
+    }
+    else {  
+        if (message.reply_message !== false) {
+            await message.client.sendMessage(message.jid, '@' + message.reply_message.jid.split('@')[0] + Config.BLOCKMSG, MessageType.text, {
+                quotedMessage: message.reply_message.data, contextInfo: {mentionedJid: [message.reply_message.jid.replace('c.us', 's.whatsapp.net')]}
+            });
+            await message.client.blockUser(message.reply_message.jid, "add");
+        } else if (message.mention !== false) {
+            message.mention.map(async user => {
+                await message.client.sendMessage(message.jid, '@' + user.split('@')[0] + Config.BLOCKMSG, MessageType.text, {
+                    previewType: 0, contextInfo: {mentionedJid: [user.replace('c.us', 's.whatsapp.net')]}
+                });
+                await message.client.blockUser(user, "add");
+            });
+        } else if (!message.jid.includes('-')) {
+            await message.client.sendMessage(message.jid, '*' + Lang.BLOCKED_UPPER + '*', MessageType.text);
+            await message.client.blockUser(message.jid, "add");
+        } else {
+            await message.client.sendMessage(message.jid, '*' + Lang.NEED_USER + '*', MessageType.text);
+        }
+    }
+}));
+
+Asena.addCommand({pattern: 'unblock ?(.*)', fromMe: true, dontAddCommandList: true, desc: Lang.UNBLOCK_DESC}, (async (message, match) => { 
+    if (Config.UNBLOCKMSG == 'default') { 
+   
+        if (message.reply_message !== false) {
+            await message.client.blockUser(message.reply_message.jid, "remove");
+            await message.client.sendMessage(message.jid, '@' + message.reply_message.jid.split('@')[0] + '```, ' + Lang.UNBLOCKED + '!```', MessageType.text, {
+                quotedMessage: message.reply_message.data, contextInfo: {mentionedJid: [message.reply_message.jid.replace('c.us', 's.whatsapp.net')]}
+            });
+        } else if (message.mention !== false) {
+            message.mention.map(async user => {
+                await message.client.blockUser(user, "remove");
+                await message.client.sendMessage(message.jid, '@' + user.split('@')[0] + '```, ' + Lang.UNBLOCKED + '!```', MessageType.text, {
+                    contextInfo: {mentionedJid: [user.replace('c.us', 's.whatsapp.net')]}
+                });    
+            });
+        } else if (!message.jid.includes('-')) {
+            await message.client.blockUser(message.jid, "remove");
+            await message.client.sendMessage(message.jid, '*' + Lang.UNBLOCKED_UPPER + '*', MessageType.text,);
+        } else {
+            await message.client.sendMessage(message.jid, '*' + Lang.NEED_USER + '*', MessageType.text,);
+        }
+    }
+    else {
+        if (message.reply_message !== false) {
+            await message.client.blockUser(message.reply_message.jid, "remove");
+            await message.client.sendMessage(message.jid, '@' + message.reply_message.jid.split('@')[0] + Config.UNBLOCKMSG, MessageType.text, {
+                quotedMessage: message.reply_message.data, contextInfo: {mentionedJid: [message.reply_message.jid.replace('c.us', 's.whatsapp.net')]}
+            });
+        } else if (message.mention !== false) {
+            message.mention.map(async user => {
+                await message.client.blockUser(user, "remove");
+                await message.client.sendMessage(message.jid, '@' + user.split('@')[0] + Config.UNBLOCKMSG, MessageType.text, {
+                    contextInfo: {mentionedJid: [user.replace('c.us', 's.whatsapp.net')]}
+                });    
+            });
+        } else if (!message.jid.includes('-')) {
+            await message.client.blockUser(message.jid, "remove");
+            await message.client.sendMessage(message.jid, '*' + Lang.UNBLOCKED_UPPER + '*', MessageType.text,);
+        } else {
+            await message.client.sendMessage(message.jid, '*' + Lang.NEED_USER + '*', MessageType.text,);
+        }
+    }
+}));
+
+if (Config.WORKTYPE == 'private') {
+
+    Asena.addCommand({pattern: 'jid ?(.*)', fromMe: true, desc: Lang.JID_DESC}, (async (message, match) => {    
+        if (message.reply_message !== false) {
+            await message.client.sendMessage(message.jid, Lang.JID.format(message.reply_message.jid.split('@')[0], message.reply_message.jid), MessageType.text, {
+                quotedMessage: message.reply_message.data, contextInfo: {mentionedJid: [message.reply_message.jid.replace('c.us', 's.whatsapp.net')]}
+            });
+        } else if (message.mention !== false) {
+            message.mention.map(async user => {
+                await message.client.sendMessage(message.jid, Lang.JID.format(user.split('@')[0], user), MessageType.text, {
+                    contextInfo: {mentionedJid: [user.replace('c.us', 's.whatsapp.net')]}
+                });    
+            });
+        } else {
+            await message.client.sendMessage(message.jid, Lang.JID_CHAT.format(message.jid), MessageType.text);
+        }
+    }));
+}
+else if (Config.WORKTYPE == 'public') {
+
+    Asena.addCommand({pattern: 'jid ?(.*)', fromMe: false, desc: Lang.JID_DESC}, (async (message, match) => {    
+        if (message.reply_message !== false) {
+            await message.client.sendMessage(message.jid, Lang.JID.format(message.reply_message.jid.split('@')[0], message.reply_message.jid), MessageType.text, {
+                quotedMessage: message.reply_message.data, contextInfo: {mentionedJid: [message.reply_message.jid.replace('c.us', 's.whatsapp.net')]}
+            });
+        } else if (message.mention !== false) {
+            message.mention.map(async user => {
+                await message.client.sendMessage(message.jid, Lang.JID.format(user.split('@')[0], user), MessageType.text, {
+                    contextInfo: {mentionedJid: [user.replace('c.us', 's.whatsapp.net')]}
+                });    
+            });
+        } else {
+            await message.client.sendMessage(message.jid, Lang.JID_CHAT.format(message.jid), MessageType.text);
+        }
+    }));
+}
